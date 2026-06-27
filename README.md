@@ -1,71 +1,77 @@
 # FoilVault
 
-Privacy-first browser password manager sa ugrađenom zaštitom od phishing autofill-a kroz integraciju sa FoilGuard.
+Privacy-first browser password manager with built-in phishing autofill protection via FoilGuard integration.
 
-> Deo [Foil](../) security suite-a.
-
----
-
-## Šta treba da postigne
-
-1. **Pruži lokalni, zero-knowledge password manager** bez obaveznog cloud naloga
-2. **Jedinstven differentiator** — pre svakog autofill-a proverava FoilGuard risk score i blokira autofill na sumnjivim domenima
-3. **Monetizuje Foil brend** kroz sync tier (cloud ili self-hosted), kada korisnici izgrade poverenje kroz FoilGuard i FoilLab
-4. **Otvori enterprise tier** — shared vault, SSO, admin konzola za timove
+> Part of the [Foil](../) security suite.
 
 ---
 
-## Ciljna grupa
+## Goals
 
-| Segment | Opis |
-|---------|------|
-| **Primarni** | Tehnički korisnici koji žele open-source, lokalni PM bez obaveznog cloud naloga (privuceni od Bitwarden, 1Password) |
-| **Sekundarni** | Postojeći FoilGuard korisnici — prirodan sledeći korak (već veruju brendu) |
-| **B2B (dugoročno)** | Mali timovi i startupi koji žele self-hosted shared vault bez enterprise cenovnika |
-
----
-
-## Tehnologije
-
-| Deo | Tehnologija | Zašto |
-|-----|-------------|-------|
-| Extension | **TypeScript** + Manifest v3 | Konzistentno sa FoilGuard, deli infrastrukturu |
-| Enkripcija | **Web Crypto API** (AES-GCM 256) | Nativno u browseru, bez eksternih crypto libova |
-| KDF | **Argon2id** (via wasm) | State-of-the-art key derivation, otporan na GPU napade |
-| Lokalni storage | **IndexedDB** (enkriptovano) | Persistentno, ne odlazi na server |
-| Sync backend | **Node.js** + PostgreSQL | Server prima samo enkriptovane blokove, nikad plaintext |
-| Auth (sync) | **WebAuthn** + JWT | Passwordless login za sync servis |
-| CI/CD | **GitHub Actions** | Automatski security audit (npm audit), build, package |
+1. **Provide a local, zero-knowledge password manager** with no mandatory cloud account
+2. **Unique differentiator** — checks FoilGuard's risk score before every autofill and blocks credentials on suspicious domains
+3. **Monetize the Foil brand** through a sync tier (cloud or self-hosted), once users build trust through FoilGuard and FoilLab
+4. **Open an enterprise tier** — shared vault, SSO, admin console for teams
 
 ---
 
-## Sigurnosni model
+## Target audience
+
+| Segment | Description |
+|---------|-------------|
+| **Primary** | Technical users who want an open-source, local PM with no mandatory cloud account (moving away from Bitwarden, 1Password) |
+| **Secondary** | Existing FoilGuard users — a natural next step, already trust the brand |
+| **B2B (long-term)** | Small teams and startups who want a self-hosted shared vault without enterprise pricing |
+
+---
+
+## Tech stack
+
+| Layer | Technology | Why |
+|-------|------------|-----|
+| Extension | **TypeScript** + Manifest v3 | Consistent with FoilGuard, shared infrastructure |
+| Encryption | **Web Crypto API** (AES-GCM-256) | Native to the browser, no external crypto libraries |
+| KDF | **Argon2id** (via WASM) | State-of-the-art, resistant to GPU and ASIC attacks |
+| Local storage | **IndexedDB** (encrypted) | Persistent, never leaves the device |
+| Sync backend | **Node.js** + PostgreSQL | Server receives only encrypted blobs, never plaintext |
+| Auth (sync) | **WebAuthn** + JWT | Passwordless login for the sync service |
+| CI/CD | **GitHub Actions** | npm audit, SAST scan, build, package |
+
+---
+
+## Security model
 
 ```
-Master Password (nikad ne napušta uređaj)
-       ↓ Argon2id (salt per-device)
-Encryption Key
-       ↓ AES-GCM-256
-Enkriptovani vault  ──► IndexedDB (lokalno)
-                    ──► Sync server (samo enkriptovani blokovi)
+Master Password  (never leaves the device)
+       ↓  Argon2id  (m=64MB, t=3, p=4 — OWASP recommended parameters)
+Encryption Key  (256-bit)
+       ↓  AES-GCM-256  (unique nonce per encrypted record)
+Encrypted vault
+       ├──► IndexedDB  (local, offline-first)
+       └──► Sync server  (encrypted blobs only — server is blind to content)
 ```
 
-Server ne vidi master password, ključ, niti plaintext kredencijale.
+- Server **never** sees the master password, the key, or plaintext credentials
+- **Zero-knowledge sync**: the encrypted blob is uploaded opaque — server has no knowledge of its structure
+- **Nonce reuse prevention**: every record gets a cryptographically random nonce (CSPRNG)
+- **Integrity check**: AEAD (Authenticated Encryption with Associated Data) — detects any vault tampering
+- **Memory zeroing**: sensitive variables (master password, key) are cleared from memory immediately after use
+- **Auto-lock**: vault locks after X minutes of inactivity, key is erased from memory
 
 ---
 
-## Ključna integracija — FoilGuard
+## Key integration — FoilGuard
 
-Pre autofill-a:
-1. FoilVault šalje domen FoilGuard risk API-ju (lokalni poziv, ne eksterni server)
-2. Ako `risk_score > 60` → autofill je blokiran, prikazuje se upozorenje sa objašnjenjem
-3. Korisnik može eksplicitno da overriduje upozorenje
+Before autofill:
+1. FoilVault sends the domain to the FoilGuard risk API (local call, not an external server)
+2. If `risk_score > 60` → autofill is blocked, a warning is shown with an explanation
+3. The user can explicitly override the warning (conscious decision, logged locally)
 
-Ovo je jedinstven feature koji nijedan mainstream PM ne nudi.
+This is a feature no mainstream password manager offers.
 
 ---
 
-## Veze sa ostalim Foil projektima
+## Integration with other Foil projects
 
-- **FoilGuard** je dependency — risk API mora biti instaliran za phishing autofill zaštitu
-- **FoilLab** zajednica = beta testeri za vault i sync implementaciju (tehničan auditorijum)
+- **FoilGuard** is a dependency — the risk API must be installed for phishing autofill protection
+- **FoilLab** community = beta testers for vault and sync implementation (technical audience)
