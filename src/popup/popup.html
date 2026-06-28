@@ -59,6 +59,11 @@
       <select id="folder-filter" class="folder-select hidden">
         <option value="">All folders</option>
       </select>
+      <select id="sort-select" class="folder-select" title="Sort order">
+        <option value="name">A–Z</option>
+        <option value="added">Newest</option>
+        <option value="updated">Updated</option>
+      </select>
       <button id="btn-add" class="add-btn" title="Add credential">+</button>
     </div>
     <div id="expiry-banner" class="expiry-banner hidden">
@@ -80,7 +85,7 @@
         <button id="type-note" class="type-btn" type="button">📝 Secure note</button>
       </div>
       <div id="login-fields">
-        <input id="f-site" type="text" class="mp-input" placeholder="Site / App" />
+        <input id="f-site" type="text" class="mp-input" id="f-site" placeholder="Site / App" />
         <input id="f-folder" type="text" class="mp-input" placeholder="Folder (optional)" list="folder-list" autocomplete="off" />
         <datalist id="folder-list"></datalist>
         <input id="f-user" type="text" class="mp-input" placeholder="Username / Email" autocomplete="off" />

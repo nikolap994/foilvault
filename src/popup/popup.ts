@@ -41,7 +41,8 @@ const mpInput = $i('mp-input'), btnUnlock = $b('btn-unlock'), lockedStatus = $('
 // unlocked
 const searchInput = $i('search-input'), credList = $('cred-list'), credEmpty = $('cred-empty')
 const btnAdd = $b('btn-add'), btnLock = $b('btn-lock'), btnGen = $b('btn-gen')
-const folderFilter = $s('folder-filter'), expiryBanner = $('expiry-banner'), expiryBannerText = $('expiry-banner-text')
+const folderFilter = $s('folder-filter'), sortSelect = $s('sort-select')
+const expiryBanner = $('expiry-banner'), expiryBannerText = $('expiry-banner-text')
 // add/edit
 const btnCancel = $b('btn-cancel'), btnSave = $b('btn-save'), btnDelete = $b('btn-delete')
 const formTitle = $('form-title'), addStatus = $('add-status')
@@ -155,11 +156,20 @@ function checkExpiry(): void {
   expiryBanner.classList.remove('hidden')
 }
 
+function sortedCreds(creds: Credential[]): Credential[] {
+  const order = sortSelect.value
+  return [...creds].sort((a, b) => {
+    if (order === 'added') return b.createdAt - a.createdAt
+    if (order === 'updated') return b.updatedAt - a.updatedAt
+    return a.site.localeCompare(b.site)
+  })
+}
+
 function renderList(creds: Credential[]): void {
   credList.innerHTML = ''
   credEmpty.classList.toggle('hidden', creds.length > 0)
   const now = Date.now()
-  for (const c of creds) {
+  for (const c of sortedCreds(creds)) {
     const li = document.createElement('li')
     li.className = 'cred-item'
     if (c.expiresAt && c.expiresAt <= now) li.classList.add('cred-expired')
@@ -178,14 +188,40 @@ function renderList(creds: Credential[]): void {
     info.appendChild(site); info.appendChild(sub); li.appendChild(info)
 
     if (c.type !== 'note') {
-      const copyBtn = document.createElement('button')
-      copyBtn.className = 'cred-copy'; copyBtn.title = 'Copy password'; copyBtn.textContent = '📋'
-      copyBtn.addEventListener('click', async (e) => {
+      // Username copy
+      if (c.username) {
+        const copyUser = document.createElement('button')
+        copyUser.className = 'cred-copy'; copyUser.title = 'Copy username'; copyUser.textContent = '👤'
+        copyUser.addEventListener('click', async (e) => {
+          e.stopPropagation()
+          await navigator.clipboard.writeText(c.username)
+          copyUser.textContent = '✓'; setTimeout(() => { copyUser.textContent = '👤' }, 1500)
+        })
+        li.appendChild(copyUser)
+      }
+      // Password copy
+      const copyPw = document.createElement('button')
+      copyPw.className = 'cred-copy'; copyPw.title = 'Copy password'; copyPw.textContent = '📋'
+      copyPw.addEventListener('click', async (e) => {
         e.stopPropagation()
         await navigator.clipboard.writeText(c.password)
-        copyBtn.textContent = '✓'; setTimeout(() => { copyBtn.textContent = '📋' }, 1500)
+        copyPw.textContent = '✓'; setTimeout(() => { copyPw.textContent = '📋' }, 1500)
       })
-      li.appendChild(copyBtn)
+      li.appendChild(copyPw)
+      // TOTP copy
+      if (c.totp && validateBase32Secret(c.totp)) {
+        const copyTotp = document.createElement('button')
+        copyTotp.className = 'cred-copy'; copyTotp.title = 'Copy 2FA code'; copyTotp.textContent = '🔑'
+        copyTotp.addEventListener('click', async (e) => {
+          e.stopPropagation()
+          try {
+            const code = await generateTOTP(c.totp!)
+            await navigator.clipboard.writeText(code)
+            copyTotp.textContent = '✓'; setTimeout(() => { copyTotp.textContent = '🔑' }, 2000)
+          } catch { copyTotp.textContent = '✗'; setTimeout(() => { copyTotp.textContent = '🔑' }, 1500) }
+        })
+        li.appendChild(copyTotp)
+      }
     }
 
     li.addEventListener('click', () => openEdit(c))
@@ -193,15 +229,17 @@ function renderList(creds: Credential[]): void {
   }
 }
 
-searchInput.addEventListener('input', () => {
+function applyFilters(): void {
   const q = searchInput.value.toLowerCase()
   const folder = folderFilter.value
   renderList(allCreds.filter(c =>
     (c.site.toLowerCase().includes(q) || c.username.toLowerCase().includes(q) || c.notes.toLowerCase().includes(q)) &&
     (!folder || c.folder === folder)
   ))
-})
-folderFilter.addEventListener('change', () => searchInput.dispatchEvent(new Event('input')))
+}
+searchInput.addEventListener('input', applyFilters)
+folderFilter.addEventListener('change', applyFilters)
+sortSelect.addEventListener('change', applyFilters)
 
 // ─── Export ────────────────────────────────────────────────────────────────
 btnExport.addEventListener('click', async () => {
@@ -220,6 +258,7 @@ function setCredType(t: 'login' | 'note'): void {
   typeBtnLogin.classList.toggle('active', t === 'login')
   typeBtnNote.classList.toggle('active', t === 'note')
   loginFields.style.display = t === 'login' ? '' : 'none'
+  fSite.placeholder = t === 'note' ? 'Title' : 'Site / App'
   if (t === 'note') { stopTotpPreview() }
 }
 typeBtnLogin.addEventListener('click', () => setCredType('login'))
