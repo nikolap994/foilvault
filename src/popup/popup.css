@@ -276,3 +276,46 @@ input[type="date"] { color-scheme: dark; }
 .breach-result { font-size: 12px; font-weight: 600; padding: 6px 0; }
 .breach-safe { color: #41d07f; }
 .breach-danger { color: #ef4444; }
+
+/* ── Light theme ── */
+@media (prefers-color-scheme: light) {
+  body { background: #f8fafc; color: #0f172a; }
+  .header { border-bottom-color: rgba(0,0,0,0.08); }
+  .icon-btn { border-color: rgba(0,0,0,0.1); color: #64748b; }
+  .icon-btn:hover { border-color: rgba(99,102,241,0.4); color: #0f172a; }
+  .vault-sub { color: #64748b; }
+  .mp-input { background: #fff; border-color: rgba(0,0,0,0.12); color: #0f172a; }
+  .mp-input::placeholder { color: #94a3b8; }
+  .mp-input:focus { border-color: rgba(99,102,241,0.5); }
+  .footer-note { color: #94a3b8; }
+  .search-bar { border-bottom-color: rgba(0,0,0,0.06); }
+  .search-input { background: #fff; border-color: rgba(0,0,0,0.10); color: #0f172a; }
+  .search-input:focus { border-color: rgba(99,102,241,0.4); }
+  .cred-list { background: #f8fafc; }
+  .cred-item { border-bottom-color: rgba(0,0,0,0.05); }
+  .cred-item:hover { background: rgba(0,0,0,0.02); }
+  .cred-user { color: #94a3b8; }
+  .cred-copy { color: #94a3b8; }
+  .cred-copy:hover { color: #6366f1; }
+  .cred-empty { color: #94a3b8; }
+  .form-header { border-bottom-color: rgba(0,0,0,0.06); }
+  .back-btn { color: #94a3b8; }
+  .back-btn:hover { color: #0f172a; }
+  .form-title { color: #64748b; }
+  .folder-select { background: #fff; border-color: rgba(0,0,0,0.10); color: #0f172a; }
+  .expiry-banner { background: rgba(239,68,68,0.06); border-bottom-color: rgba(239,68,68,0.12); }
+  .gen-output { background: #f0f0ff; border-color: rgba(0,0,0,0.08); color: #4f46e5; }
+  .gen-opt { color: #475569; }
+  .gen-opt input[type="number"] { background: #fff; border-color: rgba(0,0,0,0.10); color: #0f172a; }
+  .type-btn { background: #fff; border-color: rgba(0,0,0,0.10); color: #94a3b8; }
+  .type-btn.active { border-color: #6366f1; color: #4f46e5; background: rgba(99,102,241,0.06); }
+  .file-drop-zone { border-color: rgba(99,102,241,0.3); background: rgba(99,102,241,0.03); }
+  .import-preview { background: #f0f0ff; border-color: rgba(0,0,0,0.06); color: #64748b; }
+  .import-preview strong { color: #4f46e5; }
+  .breach-btn { background: none; border-color: rgba(0,0,0,0.10); color: #64748b; }
+  .breach-btn:hover { border-color: rgba(99,102,241,0.4); color: #0f172a; }
+  .primary-btn { background: #6366f1; }
+  .add-btn { background: #6366f1; }
+  .logo-accent { color: #4f46e5; }
+  input[type="date"] { color-scheme: light; background: #fff; border-color: rgba(0,0,0,0.10); color: #0f172a; }
+}

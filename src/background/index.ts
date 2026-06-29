@@ -1,7 +1,9 @@
 import { clearSessionKey, getCredentials, isVaultUnlocked } from '../lib/vault'
 
-chrome.runtime.onInstalled.addListener(() => {
-  // Vault is initialized on first popup open
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/onboarding.html') })
+  }
 })
 
 // Auto-lock on idle (15 min)
