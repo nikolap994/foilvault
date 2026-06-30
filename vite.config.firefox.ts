@@ -8,7 +8,7 @@ export default defineConfig({
   build: {
     outDir: 'dist-firefox',
     minify: false,
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'src/popup/popup.html'),

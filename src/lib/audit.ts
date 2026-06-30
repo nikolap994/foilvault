@@ -21,7 +21,7 @@ const STORAGE_KEY = 'foilvault_audit_log'
 const MAX_ENTRIES = 300
 
 export async function logAuditEvent(event: AuditEvent, site?: string): Promise<void> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY)
+  const stored = await chrome.storage.local.get<Record<string, AuditEntry[]>>(STORAGE_KEY)
   const log: AuditEntry[] = stored[STORAGE_KEY] ?? []
   log.push({ event, ts: Date.now(), ...(site ? { site } : {}) })
   if (log.length > MAX_ENTRIES) log.splice(0, log.length - MAX_ENTRIES)
@@ -29,7 +29,7 @@ export async function logAuditEvent(event: AuditEvent, site?: string): Promise<v
 }
 
 export async function getAuditLog(): Promise<AuditEntry[]> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY)
+  const stored = await chrome.storage.local.get<Record<string, AuditEntry[]>>(STORAGE_KEY)
   const log: AuditEntry[] = stored[STORAGE_KEY] ?? []
   return [...log].reverse()
 }

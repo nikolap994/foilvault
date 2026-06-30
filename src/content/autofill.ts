@@ -192,7 +192,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 })
 
 async function init(): Promise<void> {
-  const stored = await chrome.storage.local.get('foilvault_options')
+  const stored = await chrome.storage.local.get<{ foilvault_options?: { autofillEnabled?: boolean } }>('foilvault_options')
   const enabled: boolean = stored.foilvault_options?.autofillEnabled ?? true
   if (!enabled) return
   attachToPasswordFields()

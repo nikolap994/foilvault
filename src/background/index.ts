@@ -4,7 +4,7 @@ import { logAuditEvent } from '../lib/audit'
 const DEFAULT_AUTOLOCK_MINUTES = 5
 
 async function getAutolockSeconds(): Promise<number> {
-  const stored = await chrome.storage.local.get('foilvault_options')
+  const stored = await chrome.storage.local.get<{ foilvault_options?: { autolockMinutes?: number } }>('foilvault_options')
   const mins: number = stored.foilvault_options?.autolockMinutes ?? DEFAULT_AUTOLOCK_MINUTES
   return mins === 0 ? 0 : mins * 60
 }
