@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
+    "build:firefox": "vite build --config vite.config.firefox.ts",
     "type-check": "tsc --noEmit",
     "test": "tsx scripts/test-vault.mjs"
   },
