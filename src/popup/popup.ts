@@ -10,6 +10,7 @@ import { measureStrength } from '../lib/strength'
 import { generateTOTP, secondsRemaining, validateBase32Secret } from '../lib/totp'
 import { logAuditEvent } from '../lib/audit'
 import { generatePassphrase, passphraseEntropy, WORDLIST } from '../lib/passphrase'
+import { el, replace } from '../lib/dom'
 
 // ─── Views ─────────────────────────────────────────────────────────────────
 type View = 'loading' | 'firstrun' | 'locked' | 'unlocked' | 'add' | 'gen' | 'import'
@@ -527,7 +528,10 @@ importFileInput.addEventListener('change', () => {
     try {
       const raw = importCredentials(text, fmt)
       pendingImport = raw.map(r => ({ ...r, type: 'login' as const }))
-      importPreview.innerHTML = `Detected: <strong>${fmt}</strong> · <strong>${pendingImport.length}</strong> credential${pendingImport.length !== 1 ? 's' : ''}`
+      replace(importPreview,
+        'Detected: ', el('strong', { textContent: fmt }),
+        ' · ', el('strong', { textContent: String(pendingImport.length) }),
+        ` credential${pendingImport.length !== 1 ? 's' : ''}`)
       importPreview.classList.remove('hidden'); importStatus.textContent = ''
       btnImportConfirm.classList.toggle('hidden', pendingImport.length === 0)
     } catch { importStatus.textContent = 'Failed to parse CSV.' }

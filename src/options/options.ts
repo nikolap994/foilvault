@@ -2,6 +2,7 @@ import { getAuditLog, clearAuditLog, formatAuditEvent, logAuditEvent } from '../
 import { exportEncrypted, importEncrypted, addCredential, getCredentials } from '../lib/vault'
 import { checkPasswordBreach } from '../lib/hibp'
 import { measureStrength } from '../lib/strength'
+import { el, replace } from '../lib/dom'
 
 interface VaultOptions {
   autolockMinutes: number
@@ -179,28 +180,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       setBadge('health-old-count', old.length)
 
       const row = (site: string, user: string, extra: string, extraColor?: string) =>
-        `<div class="health-item"><span class="health-site">${site}</span><span class="health-user">${user}</span><span class="health-score"${extraColor ? ` style="color:${extraColor}"` : ''}>${extra}</span></div>`
+        el('div', { className: 'health-item' }, [
+          el('span', { className: 'health-site', textContent: site }),
+          el('span', { className: 'health-user', textContent: user }),
+          el('span', { className: 'health-score', textContent: extra, ...(extraColor ? { style: `color:${extraColor}` } : {}) }),
+        ])
+      const empty = (msg: string) => el('p', { className: 'health-empty', textContent: msg })
 
-      document.getElementById('health-weak-list')!.innerHTML = weak.length === 0
-        ? '<p class="health-empty">All passwords are strong.</p>'
-        : weak.map(c => row(c.site, c.username, measureStrength(c.password).label)).join('')
+      replace(document.getElementById('health-weak-list')!,
+        ...(weak.length === 0
+          ? [empty('All passwords are strong.')]
+          : weak.map(c => row(c.site, c.username, measureStrength(c.password).label))))
 
-      document.getElementById('health-reused-list')!.innerHTML = reusedGroups.length === 0
-        ? '<p class="health-empty">No passwords are reused.</p>'
-        : reusedGroups.map(g =>
-            `<div class="health-reuse-group">${g.map(c => row(c.site, c.username, '')).join('')}</div>`
-          ).join('')
+      replace(document.getElementById('health-reused-list')!,
+        ...(reusedGroups.length === 0
+          ? [empty('No passwords are reused.')]
+          : reusedGroups.map(g => el('div', { className: 'health-reuse-group' }, g.map(c => row(c.site, c.username, ''))))))
 
-      document.getElementById('health-expired-list')!.innerHTML = expired.length === 0
-        ? '<p class="health-empty">No expired passwords.</p>'
-        : expired.map(c => row(c.site, c.username, new Date(c.expiresAt!).toLocaleDateString(), '#ef4444')).join('')
+      replace(document.getElementById('health-expired-list')!,
+        ...(expired.length === 0
+          ? [empty('No expired passwords.')]
+          : expired.map(c => row(c.site, c.username, new Date(c.expiresAt!).toLocaleDateString(), '#ef4444'))))
 
-      document.getElementById('health-old-list')!.innerHTML = old.length === 0
-        ? '<p class="health-empty">All passwords updated recently.</p>'
-        : old.map(c => {
-            const days = Math.floor((now - c.updatedAt) / (24 * 60 * 60 * 1000))
-            return row(c.site, c.username, `${days}d ago`, '#f59e0b')
-          }).join('')
+      replace(document.getElementById('health-old-list')!,
+        ...(old.length === 0
+          ? [empty('All passwords updated recently.')]
+          : old.map(c => {
+              const days = Math.floor((now - c.updatedAt) / (24 * 60 * 60 * 1000))
+              return row(c.site, c.username, `${days}d ago`, '#f59e0b')
+            })))
 
       resultsEl.classList.remove('hidden')
     } catch {
@@ -243,15 +251,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         ? `✓ All ${targets.length} passwords are clean.`
         : `⚠ ${breached.length} of ${targets.length} passwords found in known breaches.`
       auditVaultProgress.className = `export-status ${breached.length > 0 ? 'err' : 'ok'}`
-      auditVaultResults.innerHTML = results.map(r => {
+      replace(auditVaultResults, ...results.map(r => {
         const statusStyle = r.err ? 'color:#64748b' : r.breached ? 'color:#ef4444' : 'color:#41d07f'
         const statusText = r.err ? 'check failed' : r.breached ? `⚠ ${r.count.toLocaleString()} breaches` : '✓ clean'
-        return `<div class="audit-entry">
-          <span class="audit-event">${r.site}</span>
-          <span class="audit-site">${r.username}</span>
-          <span class="audit-time" style="${statusStyle}">${statusText}</span>
-        </div>`
-      }).join('')
+        return el('div', { className: 'audit-entry' }, [
+          el('span', { className: 'audit-event', textContent: r.site }),
+          el('span', { className: 'audit-site', textContent: r.username }),
+          el('span', { className: 'audit-time', style: statusStyle, textContent: statusText }),
+        ])
+      }))
       auditVaultResults.classList.remove('hidden')
     } catch {
       auditVaultProgress.textContent = 'Failed — vault may be locked.'
@@ -306,17 +314,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const container = document.getElementById('audit-log')!
     const entries = await getAuditLog()
     if (entries.length === 0) {
-      container.innerHTML = '<p class="audit-empty">No events recorded yet.</p>'
+      replace(container, el('p', { className: 'audit-empty', textContent: 'No events recorded yet.' }))
       return
     }
-    container.innerHTML = entries.slice(0, 100).map(e => {
+    replace(container, ...entries.slice(0, 100).map(e => {
       const time = new Date(e.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-      return `<div class="audit-entry">
-        <span class="audit-event">${formatAuditEvent(e.event)}</span>
-        ${e.site ? `<span class="audit-site">${e.site}</span>` : '<span></span>'}
-        <span class="audit-time">${time}</span>
-      </div>`
-    }).join('')
+      return el('div', { className: 'audit-entry' }, [
+        el('span', { className: 'audit-event', textContent: formatAuditEvent(e.event) }),
+        e.site ? el('span', { className: 'audit-site', textContent: e.site }) : el('span'),
+        el('span', { className: 'audit-time', textContent: time }),
+      ])
+    }))
   }
 
   await renderAuditLog()
