@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
+  <title>FoilVault — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <img id="logo-icon" width="32" height="32" alt="" />
+      <div>
+        <div class="brand">Foil<span class="brand-accent">Vault</span></div>
+        <div class="brand-sub">Settings</div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Auto-lock -->
+      <section class="section">
+        <h2>Auto-lock</h2>
+        <p class="desc">Lock the vault after this period of browser inactivity. The session key is wiped from memory on lock.</p>
+        <div class="select-row">
+          <select id="autolock-select" class="select">
+            <option value="1">1 minute</option>
+            <option value="5" selected>5 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="0">Never</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Clipboard -->
+      <section class="section">
+        <h2>Clipboard clear delay</h2>
+        <p class="desc">Copied passwords are cleared from the clipboard after this delay. Set to Never to disable.</p>
+        <div class="select-row">
+          <select id="clipboard-select" class="select">
+            <option value="15">15 seconds</option>
+            <option value="30" selected>30 seconds</option>
+            <option value="60">60 seconds</option>
+            <option value="0">Never</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- HIBP -->
+      <section class="section section-toggles">
+        <h2>Security checks</h2>
+        <label class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">HIBP breach check</span>
+            <span class="toggle-desc">Check saved passwords against Have I Been Pwned using k-anonymity. Only the first 5 chars of a SHA-1 hash are sent — the full password never leaves your device.</span>
+          </div>
+          <input type="checkbox" id="hibp-toggle" class="toggle-input" checked />
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">Warn on expired passwords</span>
+            <span class="toggle-desc">Show a banner in the credential list when a password has passed its expiry date.</span>
+          </div>
+          <input type="checkbox" id="expiry-toggle" class="toggle-input" checked />
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">Autofill on matching sites</span>
+            <span class="toggle-desc">The content script detects login forms. Autofill is only triggered by a click — credentials are never injected automatically.</span>
+          </div>
+          <input type="checkbox" id="autofill-toggle" class="toggle-input" checked />
+          <span class="toggle-switch"></span>
+        </label>
+      </section>
+
+      <!-- Generator defaults -->
+      <section class="section">
+        <h2>Password generator defaults</h2>
+        <p class="desc">These values are pre-filled when you open the password generator. You can still change them per session.</p>
+
+        <div class="gen-row">
+          <label class="gen-label" for="gen-length">Length</label>
+          <div class="slider-row">
+            <input type="range" id="gen-length" min="8" max="64" step="1" value="20" />
+            <span id="gen-length-val" class="slider-val">20</span>
+          </div>
+        </div>
+
+        <div class="checkbox-group">
+          <label class="check-row">
+            <input type="checkbox" id="gen-upper" checked />
+            <span>Uppercase (A–Z)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="gen-lower" checked />
+            <span>Lowercase (a–z)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="gen-digits" checked />
+            <span>Digits (0–9)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="gen-symbols" checked />
+            <span>Symbols (!@#$%^&*)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="gen-ambiguous" />
+            <span>Exclude ambiguous characters (0 O l 1 I)</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Encrypted export -->
+      <section class="section">
+        <h2>Encrypted backup</h2>
+        <p class="desc">Export all credentials as an AES-GCM 256-bit encrypted file. Secure for offline storage or manual backup. The file can only be decrypted with the password you choose — it is not the same as your master password.</p>
+        <div class="export-row">
+          <input type="password" id="export-password" class="select" style="flex:1;min-width:0;" placeholder="Choose a backup password" autocomplete="new-password" />
+          <button id="btn-export-enc" class="export-btn">Download .foilvault</button>
+        </div>
+        <p id="export-status" class="export-status"></p>
+      </section>
+
+      <!-- Security health -->
+      <section class="section">
+        <h2>Security health</h2>
+        <p class="desc">Scan your vault for weak, reused, and expired passwords — no data leaves your device.</p>
+        <button id="btn-health-check" class="export-btn">Run health check</button>
+        <p id="health-status" class="export-status"></p>
+        <div id="health-results" class="health-results hidden">
+          <div class="health-card">
+            <div class="health-card-head">
+              <span id="health-weak-count" class="health-badge health-badge-ok">0</span>
+              <span class="health-card-title">Weak passwords</span>
+            </div>
+            <div id="health-weak-list" class="health-card-list"></div>
+          </div>
+          <div class="health-card">
+            <div class="health-card-head">
+              <span id="health-reused-count" class="health-badge health-badge-ok">0</span>
+              <span class="health-card-title">Reused passwords</span>
+            </div>
+            <div id="health-reused-list" class="health-card-list"></div>
+          </div>
+          <div class="health-card">
+            <div class="health-card-head">
+              <span id="health-expired-count" class="health-badge health-badge-ok">0</span>
+              <span class="health-card-title">Expired passwords</span>
+            </div>
+            <div id="health-expired-list" class="health-card-list"></div>
+          </div>
+          <div class="health-card">
+            <div class="health-card-head">
+              <span id="health-old-count" class="health-badge health-badge-ok">0</span>
+              <span class="health-card-title">Old passwords (90+ days)</span>
+            </div>
+            <div id="health-old-list" class="health-card-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Vault audit -->
+      <section class="section">
+        <h2>Vault audit</h2>
+        <p class="desc">Check all saved passwords against Have I Been Pwned using k-anonymity. Only the first 5 characters of each SHA-1 hash are sent — passwords never leave your device.</p>
+        <button id="btn-audit-vault" class="export-btn">Check all passwords</button>
+        <p id="audit-vault-progress" class="export-status"></p>
+        <div id="audit-vault-results" class="audit-log hidden" style="margin-top:10px;"></div>
+      </section>
+
+      <!-- Encrypted import -->
+      <section class="section">
+        <h2>Restore from backup</h2>
+        <p class="desc">Restore credentials from a <code>.foilvault</code> encrypted backup. Select the file, enter the backup password, and click Restore.</p>
+        <div class="export-row">
+          <input type="password" id="import-enc-password" class="select" style="flex:1;min-width:0;" placeholder="Backup password" autocomplete="current-password" />
+          <button id="btn-import-enc-pick" class="export-btn">Choose file</button>
+          <input type="file" id="import-enc-file" accept=".foilvault,application/json" class="hidden" />
+        </div>
+        <p id="import-enc-filename" class="import-filename"></p>
+        <button id="btn-import-enc" class="export-btn" style="margin-top:10px;">Restore credentials</button>
+        <p id="import-enc-status" class="export-status"></p>
+      </section>
+
+      <!-- Security log -->
+      <section class="section">
+        <h2>Security log</h2>
+        <p class="desc">Recent vault events — unlocks, locks, autofills, exports, and credential changes. Last 300 events are stored locally.</p>
+        <div id="audit-log" class="audit-log">
+          <p class="audit-empty">No events recorded yet.</p>
+        </div>
+        <button id="btn-clear-log" class="ghost-btn">Clear log</button>
+      </section>
+
+      <!-- Danger zone -->
+      <section class="section section-danger">
+        <h2>Danger zone</h2>
+        <p class="desc">These actions are irreversible. Export your vault before proceeding.</p>
+        <div class="danger-row">
+          <div>
+            <strong>Clear vault</strong>
+            <p class="danger-sub">Permanently deletes all credentials and the encrypted vault. Cannot be undone.</p>
+          </div>
+          <button id="btn-clear-vault" class="danger-btn">Clear vault</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <button id="btn-save" class="save-btn">Save settings</button>
+      <span id="save-status" class="save-status"></span>
+    </footer>
+  </div>
+
+  <div id="confirm-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <p class="dialog-msg">This will permanently delete your vault and all stored credentials. This cannot be undone.</p>
+      <div class="dialog-actions">
+        <button id="confirm-cancel" class="dialog-cancel">Cancel</button>
+        <button id="confirm-ok" class="dialog-ok">Delete vault</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="options.ts"></script>
+</body>
+</html>

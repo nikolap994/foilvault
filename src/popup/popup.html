@@ -82,12 +82,14 @@
     <div class="add-form">
       <div class="type-toggle">
         <button id="type-login" class="type-btn active" type="button">🔑 Login</button>
-        <button id="type-note" class="type-btn" type="button">📝 Secure note</button>
+        <button id="type-card"  class="type-btn" type="button">💳 Card</button>
+        <button id="type-id"    class="type-btn" type="button">🪪 ID</button>
+        <button id="type-note"  class="type-btn" type="button">📝 Note</button>
       </div>
+      <input id="f-site" type="text" class="mp-input" placeholder="Site / App" />
+      <input id="f-folder" type="text" class="mp-input" placeholder="Folder (optional)" list="folder-list" autocomplete="off" />
+      <datalist id="folder-list"></datalist>
       <div id="login-fields">
-        <input id="f-site" type="text" class="mp-input" id="f-site" placeholder="Site / App" />
-        <input id="f-folder" type="text" class="mp-input" placeholder="Folder (optional)" list="folder-list" autocomplete="off" />
-        <datalist id="folder-list"></datalist>
         <input id="f-user" type="text" class="mp-input" placeholder="Username / Email" autocomplete="off" />
         <div class="pw-row">
           <input id="f-pass" type="password" class="mp-input pw-input" placeholder="Password" autocomplete="new-password" />
@@ -105,9 +107,31 @@
         </div>
         <input id="f-expiry" type="date" class="mp-input" title="Password expiry (optional)" />
       </div>
+      <div id="card-fields" class="hidden">
+        <input id="f-card-holder" type="text" class="mp-input" placeholder="Cardholder name" autocomplete="cc-name" />
+        <input id="f-card-number" type="text" class="mp-input" placeholder="Card number" inputmode="numeric" autocomplete="cc-number" />
+        <div class="card-row">
+          <input id="f-card-expiry" type="text" class="mp-input" placeholder="MM / YY" autocomplete="cc-exp" />
+          <input id="f-card-cvv" type="text" class="mp-input" placeholder="CVV" inputmode="numeric" autocomplete="cc-csc" />
+        </div>
+      </div>
+      <div id="identity-fields" class="hidden">
+        <div class="dual-row">
+          <input id="f-id-first" type="text" class="mp-input" placeholder="First name" />
+          <input id="f-id-last" type="text" class="mp-input" placeholder="Last name" />
+        </div>
+        <input id="f-id-email" type="email" class="mp-input" placeholder="Email" />
+        <input id="f-id-phone" type="tel" class="mp-input" placeholder="Phone" />
+        <input id="f-id-address" type="text" class="mp-input" placeholder="Address" />
+        <input id="f-id-dob" type="date" class="mp-input" title="Date of birth" />
+      </div>
       <textarea id="f-notes" class="mp-input notes-area" placeholder="Notes (optional)" rows="2"></textarea>
       <button id="btn-breach-check" class="breach-btn hidden" type="button">Check for breaches 🔍</button>
       <div id="breach-result" class="breach-result hidden"></div>
+      <div id="pw-history-section" class="pw-history-section hidden">
+        <p class="pw-history-label">Password history</p>
+        <div id="pw-history-list" class="pw-history-list"></div>
+      </div>
       <div id="add-status" class="status-msg"></div>
       <button id="btn-save" class="primary-btn">Save →</button>
       <button id="btn-delete" class="danger-btn hidden">Delete credential</button>
@@ -136,13 +160,17 @@
     </div>
   </div>
 
-  <!-- password generator -->
+  <!-- password / passphrase generator -->
   <div id="view-gen" class="view hidden">
     <div class="form-header">
       <button id="btn-gen-back" class="back-btn">← back</button>
-      <p class="form-title">Generate password</p>
+      <p class="form-title">Generator</p>
     </div>
     <div class="add-form">
+      <div class="gen-tabs">
+        <button id="gen-tab-pw" class="gen-tab active" type="button">Random</button>
+        <button id="gen-tab-pp" class="gen-tab" type="button">Passphrase</button>
+      </div>
       <div class="gen-output-row">
         <code id="gen-output" class="gen-output">—</code>
         <button id="btn-copy" class="icon-btn small" type="button" title="Copy">📋</button>
@@ -151,11 +179,25 @@
         <div id="gen-strength-bar" class="strength-bar"></div>
         <span id="gen-strength-label" class="strength-label"></span>
       </div>
-      <div class="gen-options">
+      <p id="gen-entropy-label" class="gen-entropy-label hidden"></p>
+      <div id="gen-pw-opts" class="gen-options">
         <label class="gen-opt"><span>Length</span><input id="gen-len" type="number" min="8" max="64" value="20" class="gen-num-input" /></label>
         <label class="gen-opt toggle"><input id="gen-upper" type="checkbox" checked /> Uppercase</label>
         <label class="gen-opt toggle"><input id="gen-nums" type="checkbox" checked /> Numbers</label>
         <label class="gen-opt toggle"><input id="gen-syms" type="checkbox" checked /> Symbols</label>
+      </div>
+      <div id="gen-pp-opts" class="gen-options hidden">
+        <label class="gen-opt"><span>Words</span><input id="pp-words" type="number" min="3" max="8" value="4" class="gen-num-input" /></label>
+        <label class="gen-opt"><span>Separator</span>
+          <select id="pp-sep" class="gen-sep-select">
+            <option value="-">hyphen (word-word)</option>
+            <option value=".">dot (word.word)</option>
+            <option value=" ">space (word word)</option>
+            <option value="_">underscore (word_word)</option>
+          </select>
+        </label>
+        <label class="gen-opt toggle"><input id="pp-cap" type="checkbox" /> Capitalize words</label>
+        <label class="gen-opt toggle"><input id="pp-num" type="checkbox" /> Append number</label>
       </div>
       <button id="btn-regen" class="primary-btn">Regenerate</button>
       <div id="copy-status" class="status-msg"></div>

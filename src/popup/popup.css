@@ -266,6 +266,58 @@ input[type="date"] { color-scheme: dark; }
 }
 .import-preview strong { color: #818cf8; }
 
+/* generator tabs */
+.gen-tabs { display: flex; gap: 6px; margin-bottom: 2px; }
+.gen-tab {
+  flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 7px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+  color: #64748b; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.gen-tab.active { background: rgba(129,140,248,0.1); border-color: rgba(129,140,248,0.35); color: #818cf8; }
+.gen-sep-select {
+  background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; color: #e2e8f0; font-size: 12px; padding: 4px 8px; cursor: pointer; outline: none;
+}
+.gen-entropy-label { font-size: 11px; color: #475569; text-align: center; }
+.gen-opt input[type="number"] { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 4px 8px; color: #e2e8f0; width: 64px; font-size: 13px; text-align: right; }
+
+/* password history */
+.pw-history-section {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 8px;
+}
+.pw-history-label {
+  font-size: 10px; font-weight: 700; color: #334155;
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px;
+}
+.pw-hist-entry {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px;
+}
+.pw-hist-entry:last-child { border-bottom: none; }
+.pw-hist-pw { font-family: monospace; color: #475569; flex: 1; letter-spacing: 1px; }
+.pw-hist-copy {
+  background: none; border: 1px solid rgba(255,255,255,0.08); color: #475569;
+  border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer; flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pw-hist-copy:hover { border-color: rgba(255,255,255,0.2); color: #94a3b8; }
+.pw-hist-date { color: #334155; font-size: 11px; flex-shrink: 0; }
+
+/* card / identity field rows */
+.card-row, .dual-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.card-row .mp-input, .dual-row .mp-input { width: 100%; }
+
+/* pinned credential indicator */
+.cred-pin-btn {
+  background: none; border: none; cursor: pointer; font-size: 14px;
+  padding: 0 2px; opacity: 0.35; transition: opacity 0.15s; flex-shrink: 0;
+}
+.cred-pin-btn:hover { opacity: 0.7; }
+.cred-pin-active { opacity: 1 !important; }
+
 /* breach check */
 .breach-btn {
   background: none; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;

@@ -1,15 +1,36 @@
+import { logAuditEvent } from './audit'
+
+export interface PasswordHistoryEntry {
+  password: string
+  changedAt: number
+}
+
 export interface Credential {
   id: string
-  type: 'login' | 'note'
+  type: 'login' | 'note' | 'card' | 'identity'
   site: string
   username: string
   password: string
-  totp?: string          // base32 TOTP secret
+  totp?: string
   notes: string
   folder?: string
-  expiresAt?: number     // Unix ms — password expiry date
+  expiresAt?: number
   createdAt: number
   updatedAt: number
+  passwordHistory?: PasswordHistoryEntry[]
+  pinned?: boolean
+  // Card fields
+  cardNumber?: string
+  cardExpiry?: string
+  cardCvv?: string
+  cardHolder?: string
+  // Identity fields
+  idFirstName?: string
+  idLastName?: string
+  idEmail?: string
+  idPhone?: string
+  idAddress?: string
+  idDob?: string
 }
 
 interface VaultData {
@@ -118,6 +139,7 @@ export async function initVault(password: string): Promise<void> {
   const blob = await encryptString(key, JSON.stringify(empty))
   await writeVaultBlob(blob)
   await setSessionKey(key)
+  await logAuditEvent('vault_create')
 }
 
 export async function unlockVault(password: string): Promise<boolean> {
@@ -128,6 +150,7 @@ export async function unlockVault(password: string): Promise<boolean> {
   try {
     await decryptString(key, blob)
     await setSessionKey(key)
+    await logAuditEvent('vault_unlock')
     return true
   } catch {
     return false
@@ -135,6 +158,7 @@ export async function unlockVault(password: string): Promise<boolean> {
 }
 
 export async function lockVault(): Promise<void> {
+  await logAuditEvent('vault_lock')
   await clearSessionKey()
 }
 
@@ -174,6 +198,7 @@ export async function addCredential(cred: Omit<Credential, 'id' | 'createdAt' | 
   }
   data.credentials.push(full)
   await writeData(data)
+  await logAuditEvent('credential_add', cred.site)
   return full
 }
 
@@ -181,17 +206,33 @@ export async function updateCredential(id: string, patch: Partial<Omit<Credentia
   const data = await readData()
   const idx = data.credentials.findIndex(c => c.id === id)
   if (idx < 0) return
-  data.credentials[idx] = { ...data.credentials[idx], ...patch, updatedAt: Date.now() }
+  const current = data.credentials[idx]
+  if (patch.password && patch.password !== current.password) {
+    const prev = current.passwordHistory ?? []
+    patch = { ...patch, passwordHistory: [{ password: current.password, changedAt: current.updatedAt }, ...prev].slice(0, 10) }
+  }
+  data.credentials[idx] = { ...current, ...patch, updatedAt: Date.now() }
+  await writeData(data)
+}
+
+export async function pinCredential(id: string, pinned: boolean): Promise<void> {
+  const data = await readData()
+  const idx = data.credentials.findIndex(c => c.id === id)
+  if (idx < 0) return
+  data.credentials[idx] = { ...data.credentials[idx], pinned }
   await writeData(data)
 }
 
 export async function deleteCredential(id: string): Promise<void> {
   const data = await readData()
+  const cred = data.credentials.find(c => c.id === id)
   data.credentials = data.credentials.filter(c => c.id !== id)
   await writeData(data)
+  await logAuditEvent('credential_delete', cred?.site)
 }
 
 export async function exportCredentials(format: 'json' | 'csv'): Promise<string> {
+  await logAuditEvent('vault_export')
   const creds = await getCredentials()
   if (format === 'json') return JSON.stringify(creds, null, 2)
 
@@ -201,6 +242,61 @@ export async function exportCredentials(format: 'json' | 'csv'): Promise<string>
     return [esc(c.site), esc(c.username), esc(c.password), '', esc(c.notes), esc(c.folder ?? ''), esc(c.totp ?? '')].join(',')
   })
   return header + rows.join('\n')
+}
+
+// ─── Encrypted vault export / import ─────────────────────────────────────
+export interface EncryptedExport {
+  v: 1
+  kdf: 'pbkdf2'
+  hash: 'SHA-256'
+  iterations: number
+  salt: string   // base64
+  iv: string     // base64
+  data: string   // base64 AES-GCM ciphertext of JSON credential array
+}
+
+export async function exportEncrypted(password: string): Promise<string> {
+  await logAuditEvent('vault_export')
+  const creds = await getCredentials()
+  const enc = new TextEncoder()
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const iv   = crypto.getRandomValues(new Uint8Array(12))
+  const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+  const key  = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: 600_000, hash: 'SHA-256' },
+    base,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  )
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(creds)))
+  const toB64 = (buf: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  const payload: EncryptedExport = {
+    v: 1, kdf: 'pbkdf2', hash: 'SHA-256', iterations: 600_000,
+    salt: toB64(salt.buffer as ArrayBuffer),
+    iv:   toB64(iv.buffer as ArrayBuffer),
+    data: toB64(cipher),
+  }
+  return JSON.stringify(payload, null, 2)
+}
+
+export async function importEncrypted(json: string, password: string): Promise<Credential[]> {
+  const payload = JSON.parse(json) as EncryptedExport
+  if (payload.v !== 1 || payload.kdf !== 'pbkdf2') throw new Error('unsupported_format')
+  const fromB64 = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0))
+  const salt = fromB64(payload.salt)
+  const iv   = fromB64(payload.iv)
+  const enc  = new TextEncoder()
+  const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+  const key  = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: payload.iterations, hash: 'SHA-256' },
+    base,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt'],
+  )
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, fromB64(payload.data).buffer as ArrayBuffer)
+  return JSON.parse(new TextDecoder().decode(plain)) as Credential[]
 }
 
 export function generatePassword(opts: { length: number; symbols: boolean; numbers: boolean; upper: boolean }): string {

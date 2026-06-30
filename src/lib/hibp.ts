@@ -1,5 +1,7 @@
 // HaveIBeenPwned k-anonymity breach check
 // Sends only the first 5 chars of the SHA-1 hash — password never leaves the device
+import { logAuditEvent } from './audit'
+
 export interface BreachResult {
   breached: boolean
   count: number
@@ -18,6 +20,7 @@ export async function checkPasswordBreach(password: string): Promise<BreachResul
   if (!res.ok) throw new Error(`HIBP API error: ${res.status}`)
 
   const text = await res.text()
+  await logAuditEvent('hibp_check')
   for (const line of text.split('\r\n')) {
     const [s, countStr] = line.split(':')
     if (s === suffix) {

@@ -1,3 +1,8 @@
+// Guard: never run inside an iframe (cross-origin credential injection risk)
+if (window.self !== window.top) {
+  throw new Error('foilvault:iframe-guard')
+}
+
 // Detects login forms on the page and injects a fill affordance
 const VAULT_ICON = '🔒'
 let fillBtn: HTMLButtonElement | null = null
@@ -96,7 +101,7 @@ function openFillMenu(anchor: HTMLButtonElement): void {
   document.body.appendChild(menu)
   fillMenu = menu
 
-  chrome.runtime.sendMessage({ type: 'autofill-get-credentials', hostname: location.hostname }, (res) => {
+  chrome.runtime.sendMessage({ type: 'autofill-get-credentials', hostname: location.hostname, url: location.href }, (res) => {
     loading.remove()
     if (chrome.runtime.lastError || !res) {
       const err = document.createElement('div')
@@ -174,7 +179,25 @@ function attachToPasswordFields(): void {
   })
 }
 
-attachToPasswordFields()
+// Handle context-menu fill: background resolves matching credentials and sends them here
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== 'foilvault-context-fill') return
+  const creds: Array<{ site: string; username: string; password: string }> = msg.credentials ?? []
+  if (!activePasswordField) return
+  if (creds.length === 1) {
+    fillCredential(creds[0].username, creds[0].password)
+  } else if (creds.length > 1) {
+    showFillButton(activePasswordField)
+  }
+})
 
-const observer = new MutationObserver(() => attachToPasswordFields())
-observer.observe(document.body, { childList: true, subtree: true })
+async function init(): Promise<void> {
+  const stored = await chrome.storage.local.get('foilvault_options')
+  const enabled: boolean = stored.foilvault_options?.autofillEnabled ?? true
+  if (!enabled) return
+  attachToPasswordFields()
+  const observer = new MutationObserver(() => attachToPasswordFields())
+  observer.observe(document.body, { childList: true, subtree: true })
+}
+
+init()

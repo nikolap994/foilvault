@@ -2,12 +2,14 @@ import './popup.css'
 import {
   isVaultInitialized, isVaultUnlocked, initVault, unlockVault, lockVault,
   getCredentials, getFolders, addCredential, updateCredential, deleteCredential,
-  exportCredentials, generatePassword, type Credential,
+  pinCredential, exportCredentials, generatePassword, type Credential,
 } from '../lib/vault'
 import { importCredentials, detectFormat } from '../lib/import'
 import { checkPasswordBreach } from '../lib/hibp'
 import { measureStrength } from '../lib/strength'
 import { generateTOTP, secondsRemaining, validateBase32Secret } from '../lib/totp'
+import { logAuditEvent } from '../lib/audit'
+import { generatePassphrase, passphraseEntropy, WORDLIST } from '../lib/passphrase'
 
 // ─── Views ─────────────────────────────────────────────────────────────────
 type View = 'loading' | 'firstrun' | 'locked' | 'unlocked' | 'add' | 'gen' | 'import'
@@ -54,8 +56,17 @@ const btnBreachCheck = $b('btn-breach-check'), breachResult = $('breach-result')
 const pwStrengthWrap = $('pw-strength-wrap'), pwStrengthBar = $('pw-strength-bar')
 const pwStrengthLabel = $('pw-strength-label'), pwStrengthEntropy = $('pw-strength-entropy')
 const totpPreview = $('totp-preview'), loginFields = $('login-fields')
+const cardFields = $('card-fields'), identityFields = $('identity-fields')
 const typeBtnLogin = $b('type-login'), typeBtnNote = $b('type-note')
+const typeBtnCard = $b('type-card'), typeBtnId = $b('type-id')
 const folderDatalist = $('folder-list') as HTMLDataListElement
+// card inputs
+const fCardHolder = $i('f-card-holder'), fCardNumber = $i('f-card-number')
+const fCardExpiry = $i('f-card-expiry'), fCardCvv = $i('f-card-cvv')
+// identity inputs
+const fIdFirst = $i('f-id-first'), fIdLast = $i('f-id-last')
+const fIdEmail = $i('f-id-email'), fIdPhone = $i('f-id-phone')
+const fIdAddress = $i('f-id-address'), fIdDob = $i('f-id-dob')
 // import
 const btnImport = $b('btn-import'), btnImportBack = $b('btn-import-back')
 const importFileInput = $i('import-file-input'), fileDropZone = $('file-drop-zone')
@@ -63,21 +74,65 @@ const importFileName = $('import-file-name'), importPreview = $('import-preview'
 const importStatus = $('import-status'), btnImportConfirm = $b('btn-import-confirm')
 // export
 const btnExport = $b('btn-export')
-// gen
+// gen — random password
 const genOutput = $('gen-output'), genLen = $i('gen-len'), genUpper = $i('gen-upper')
 const genNums = $i('gen-nums'), genSyms = $i('gen-syms'), btnRegen = $b('btn-regen')
 const btnCopy = $b('btn-copy'), copyStatus = $('copy-status'), btnGenBack = $b('btn-gen-back')
 const genStrengthBar = $('gen-strength-bar'), genStrengthLabel = $('gen-strength-label')
+const genStrengthWrap = $('gen-strength-wrap'), genEntropyLabel = $('gen-entropy-label')
+const genPwOpts = $('gen-pw-opts'), genPpOpts = $('gen-pp-opts')
+const genTabPw = $b('gen-tab-pw'), genTabPp = $b('gen-tab-pp')
+// gen — passphrase
+const ppWords = $i('pp-words'), ppSep = $s('pp-sep')
+const ppCap = $i('pp-cap'), ppNum = $i('pp-num')
+let genMode: 'pw' | 'pp' = 'pw'
 
 // ─── State ─────────────────────────────────────────────────────────────────
 let allCreds: Credential[] = []
 let editingId: string | null = null
-let credType: 'login' | 'note' = 'login'
+let credType: 'login' | 'note' | 'card' | 'identity' = 'login'
 let totpInterval: ReturnType<typeof setInterval> | null = null
+
+interface PopupOptions {
+  clipboardClearSeconds: number
+  hibpEnabled: boolean
+  expiryWarningsEnabled: boolean
+  genLength: number
+  genUpper: boolean
+  genDigits: boolean
+  genSymbols: boolean
+}
+const OPTION_DEFAULTS: PopupOptions = {
+  clipboardClearSeconds: 30, hibpEnabled: true, expiryWarningsEnabled: true,
+  genLength: 20, genUpper: true, genDigits: true, genSymbols: true,
+}
+let cachedOptions: PopupOptions = { ...OPTION_DEFAULTS }
+let clipboardClearTimer: ReturnType<typeof setTimeout> | null = null
+
+async function loadCachedOptions(): Promise<void> {
+  const stored = await chrome.storage.local.get('foilvault_options')
+  cachedOptions = { ...OPTION_DEFAULTS, ...(stored.foilvault_options ?? {}) }
+  genLen.value = String(cachedOptions.genLength)
+  genUpper.checked = cachedOptions.genUpper
+  genNums.checked = cachedOptions.genDigits
+  genSyms.checked = cachedOptions.genSymbols
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text)
+  if (clipboardClearTimer !== null) { clearTimeout(clipboardClearTimer); clipboardClearTimer = null }
+  const secs = cachedOptions.clipboardClearSeconds
+  if (secs <= 0) return
+  clipboardClearTimer = setTimeout(async () => {
+    clipboardClearTimer = null
+    try { await navigator.clipboard.writeText('') } catch { /* popup lost focus */ }
+  }, secs * 1000)
+}
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
   show('loading')
+  await loadCachedOptions()
   if (!(await isVaultInitialized())) { show('firstrun'); setupStrengthOnInput(newMp, 'new-mp-strength', 'new-mp-bar', 'new-mp-label'); return }
   if (await isVaultUnlocked()) { await loadList() } else { show('locked'); mpInput.focus() }
 }
@@ -144,6 +199,7 @@ async function refreshFolderUI(): Promise<void> {
 }
 
 function checkExpiry(): void {
+  if (!cachedOptions.expiryWarningsEnabled) { expiryBanner.classList.add('hidden'); return }
   const now = Date.now()
   const expiring = allCreds.filter(c => c.expiresAt && c.expiresAt <= now + 7 * 86400_000)
   if (expiring.length === 0) { expiryBanner.classList.add('hidden'); return }
@@ -159,6 +215,8 @@ function checkExpiry(): void {
 function sortedCreds(creds: Credential[]): Credential[] {
   const order = sortSelect.value
   return [...creds].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1
+    if (!a.pinned && b.pinned) return 1
     if (order === 'added') return b.createdAt - a.createdAt
     if (order === 'updated') return b.updatedAt - a.updatedAt
     return a.site.localeCompare(b.site)
@@ -176,16 +234,30 @@ function renderList(creds: Credential[]): void {
 
     const favicon = document.createElement('div')
     favicon.className = 'cred-favicon'
-    favicon.textContent = c.type === 'note' ? '📝' : c.site.charAt(0).toUpperCase()
+    favicon.textContent = c.type === 'note' ? '📝' : c.type === 'card' ? '💳' : c.type === 'identity' ? '🪪' : c.site.charAt(0).toUpperCase()
     li.appendChild(favicon)
 
     const info = document.createElement('div')
     info.className = 'cred-info'
     const site = document.createElement('div'); site.className = 'cred-site'; site.textContent = c.site
     const sub = document.createElement('div'); sub.className = 'cred-user'
-    if (c.type === 'note') { sub.textContent = 'Secure note' }
-    else { sub.textContent = c.username + (c.folder ? ` · ${c.folder}` : '') }
+    if (c.type === 'note') sub.textContent = 'Secure note'
+    else if (c.type === 'card') sub.textContent = c.cardNumber ? `•••• ${c.cardNumber.slice(-4)}` : 'Credit / debit card'
+    else if (c.type === 'identity') sub.textContent = [c.idFirstName, c.idLastName].filter(Boolean).join(' ') || 'Identity'
+    else sub.textContent = c.username + (c.folder ? ` · ${c.folder}` : '')
     info.appendChild(site); info.appendChild(sub); li.appendChild(info)
+
+    // Pin button
+    const pinBtn = document.createElement('button')
+    pinBtn.className = `cred-copy${c.pinned ? ' cred-pin-active' : ''}`
+    pinBtn.title = c.pinned ? 'Unpin' : 'Pin to top'
+    pinBtn.textContent = '📌'
+    pinBtn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      await pinCredential(c.id, !c.pinned)
+      await loadList()
+    })
+    li.appendChild(pinBtn)
 
     if (c.type !== 'note') {
       // Username copy
@@ -204,7 +276,8 @@ function renderList(creds: Credential[]): void {
       copyPw.className = 'cred-copy'; copyPw.title = 'Copy password'; copyPw.textContent = '📋'
       copyPw.addEventListener('click', async (e) => {
         e.stopPropagation()
-        await navigator.clipboard.writeText(c.password)
+        await copyToClipboard(c.password)
+        await logAuditEvent('credential_copy', c.site)
         copyPw.textContent = '✓'; setTimeout(() => { copyPw.textContent = '📋' }, 1500)
       })
       li.appendChild(copyPw)
@@ -216,7 +289,7 @@ function renderList(creds: Credential[]): void {
           e.stopPropagation()
           try {
             const code = await generateTOTP(c.totp!)
-            await navigator.clipboard.writeText(code)
+            await copyToClipboard(code)
             copyTotp.textContent = '✓'; setTimeout(() => { copyTotp.textContent = '🔑' }, 2000)
           } catch { copyTotp.textContent = '✗'; setTimeout(() => { copyTotp.textContent = '🔑' }, 1500) }
         })
@@ -224,7 +297,7 @@ function renderList(creds: Credential[]): void {
       }
     }
 
-    li.addEventListener('click', () => openEdit(c))
+    li.addEventListener('click', async () => { await logAuditEvent('credential_view', c.site); openEdit(c) })
     credList.appendChild(li)
   }
 }
@@ -253,15 +326,22 @@ btnExport.addEventListener('click', async () => {
 })
 
 // ─── Type toggle ───────────────────────────────────────────────────────────
-function setCredType(t: 'login' | 'note'): void {
+function setCredType(t: 'login' | 'note' | 'card' | 'identity'): void {
   credType = t
   typeBtnLogin.classList.toggle('active', t === 'login')
+  typeBtnCard.classList.toggle('active', t === 'card')
+  typeBtnId.classList.toggle('active', t === 'identity')
   typeBtnNote.classList.toggle('active', t === 'note')
-  loginFields.style.display = t === 'login' ? '' : 'none'
-  fSite.placeholder = t === 'note' ? 'Title' : 'Site / App'
-  if (t === 'note') { stopTotpPreview() }
+  loginFields.classList.toggle('hidden', t !== 'login')
+  cardFields.classList.toggle('hidden', t !== 'card')
+  identityFields.classList.toggle('hidden', t !== 'identity')
+  const ph: Record<typeof t, string> = { login: 'Site / App', card: 'Card name / label', identity: 'Identity name', note: 'Title' }
+  fSite.placeholder = ph[t]
+  if (t !== 'login') stopTotpPreview()
 }
 typeBtnLogin.addEventListener('click', () => setCredType('login'))
+typeBtnCard.addEventListener('click', () => setCredType('card'))
+typeBtnId.addEventListener('click', () => setCredType('identity'))
 typeBtnNote.addEventListener('click', () => setCredType('note'))
 
 // ─── Add / Edit ────────────────────────────────────────────────────────────
@@ -270,8 +350,11 @@ btnAdd.addEventListener('click', () => openAdd())
 function clearForm(): void {
   fSite.value = ''; fUser.value = ''; fPass.value = ''; fNotes.value = ''
   fFolder.value = ''; fTotp.value = ''; fExpiry.value = ''
+  fCardHolder.value = ''; fCardNumber.value = ''; fCardExpiry.value = ''; fCardCvv.value = ''
+  fIdFirst.value = ''; fIdLast.value = ''; fIdEmail.value = ''; fIdPhone.value = ''; fIdAddress.value = ''; fIdDob.value = ''
   addStatus.textContent = ''; breachResult.classList.add('hidden')
   pwStrengthWrap.classList.add('hidden'); totpPreview.classList.add('hidden')
+  $('pw-history-section').classList.add('hidden')
   stopTotpPreview()
 }
 
@@ -285,12 +368,48 @@ function openAdd(): void {
 function openEdit(c: Credential): void {
   editingId = c.id; clearForm(); setCredType(c.type ?? 'login')
   formTitle.textContent = 'Edit credential'
-  fSite.value = c.site; fUser.value = c.username; fPass.value = c.password
-  fNotes.value = c.notes; fFolder.value = c.folder ?? ''; fTotp.value = c.totp ?? ''
-  if (c.expiresAt) fExpiry.value = new Date(c.expiresAt).toISOString().slice(0, 10)
-  if (c.password) fPass.dispatchEvent(new Event('input'))
-  if (c.totp) startTotpPreview(c.totp)
-  btnDelete.classList.remove('hidden'); btnBreachCheck.classList.remove('hidden')
+  fSite.value = c.site; fNotes.value = c.notes; fFolder.value = c.folder ?? ''
+  if (c.type === 'login') {
+    fUser.value = c.username; fPass.value = c.password; fTotp.value = c.totp ?? ''
+    if (c.expiresAt) fExpiry.value = new Date(c.expiresAt).toISOString().slice(0, 10)
+    if (c.password) fPass.dispatchEvent(new Event('input'))
+    if (c.totp) startTotpPreview(c.totp)
+  } else if (c.type === 'card') {
+    fCardHolder.value = c.cardHolder ?? ''; fCardNumber.value = c.cardNumber ?? ''
+    fCardExpiry.value = c.cardExpiry ?? ''; fCardCvv.value = c.cardCvv ?? ''
+  } else if (c.type === 'identity') {
+    fIdFirst.value = c.idFirstName ?? ''; fIdLast.value = c.idLastName ?? ''
+    fIdEmail.value = c.idEmail ?? ''; fIdPhone.value = c.idPhone ?? ''
+    fIdAddress.value = c.idAddress ?? ''; fIdDob.value = c.idDob ?? ''
+  }
+  btnDelete.classList.remove('hidden')
+  btnBreachCheck.classList.toggle('hidden', !cachedOptions.hibpEnabled)
+  // Password history
+  const histSection = $('pw-history-section')
+  const histList = $('pw-history-list')
+  histList.innerHTML = ''
+  if (c.passwordHistory?.length) {
+    c.passwordHistory.forEach(h => {
+      const entry = document.createElement('div'); entry.className = 'pw-hist-entry'
+      const pw = document.createElement('span'); pw.className = 'pw-hist-pw'; pw.textContent = '••••••••'
+      const copyBtn = document.createElement('button'); copyBtn.className = 'pw-hist-copy'; copyBtn.textContent = 'copy'
+      copyBtn.addEventListener('click', async () => {
+        await copyToClipboard(h.password); copyBtn.textContent = '✓'
+        setTimeout(() => { copyBtn.textContent = 'copy' }, 1500)
+      })
+      const revBtn = document.createElement('button'); revBtn.className = 'pw-hist-copy'; revBtn.textContent = 'show'
+      revBtn.addEventListener('click', () => {
+        const hidden = pw.textContent === '••••••••'
+        pw.textContent = hidden ? h.password : '••••••••'; revBtn.textContent = hidden ? 'hide' : 'show'
+      })
+      const date = document.createElement('span'); date.className = 'pw-hist-date'
+      date.textContent = new Date(h.changedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      entry.append(pw, copyBtn, revBtn, date); histList.appendChild(entry)
+    })
+    histSection.classList.remove('hidden')
+  } else {
+    histSection.classList.add('hidden')
+  }
   prevView = 'unlocked'; show('add'); fSite.focus()
 }
 
@@ -342,15 +461,23 @@ fTotp.addEventListener('input', () => {
 btnSave.addEventListener('click', async () => {
   const site = fSite.value.trim()
   const notes = fNotes.value
-  if (!site) { addStatus.textContent = credType === 'note' ? 'Title is required.' : 'Site is required.'; return }
+  const labels: Record<typeof credType, string> = { login: 'Site', card: 'Card name', identity: 'Identity name', note: 'Title' }
+  if (!site) { addStatus.textContent = `${labels[credType]} is required.`; return }
   if (credType === 'login' && !fPass.value) { addStatus.textContent = 'Password is required.'; return }
-  if (fTotp.value && !validateBase32Secret(fTotp.value)) { addStatus.textContent = 'Invalid TOTP secret — must be base32.'; return }
+  if (credType === 'login' && fTotp.value && !validateBase32Secret(fTotp.value)) { addStatus.textContent = 'Invalid TOTP secret — must be base32.'; return }
   btnSave.disabled = true
-  const expiresAt = fExpiry.value ? new Date(fExpiry.value).getTime() : undefined
+  const folder = fFolder.value.trim() || undefined
   try {
-    const cred = {
-      type: credType, site, username: fUser.value.trim(), password: fPass.value,
-      notes, folder: fFolder.value.trim() || undefined, totp: fTotp.value.trim() || undefined, expiresAt,
+    let cred: Omit<Credential, 'id' | 'createdAt' | 'updatedAt'>
+    if (credType === 'login') {
+      const expiresAt = fExpiry.value ? new Date(fExpiry.value).getTime() : undefined
+      cred = { type: 'login', site, username: fUser.value.trim(), password: fPass.value, notes, folder, totp: fTotp.value.trim() || undefined, expiresAt }
+    } else if (credType === 'card') {
+      cred = { type: 'card', site, username: '', password: '', notes, folder, cardHolder: fCardHolder.value.trim(), cardNumber: fCardNumber.value.trim(), cardExpiry: fCardExpiry.value.trim(), cardCvv: fCardCvv.value.trim() }
+    } else if (credType === 'identity') {
+      cred = { type: 'identity', site, username: '', password: '', notes, folder, idFirstName: fIdFirst.value.trim(), idLastName: fIdLast.value.trim(), idEmail: fIdEmail.value.trim(), idPhone: fIdPhone.value.trim(), idAddress: fIdAddress.value.trim(), idDob: fIdDob.value || undefined }
+    } else {
+      cred = { type: 'note', site, username: '', password: '', notes, folder }
     }
     if (editingId) await updateCredential(editingId, cred)
     else await addCredential(cred)
@@ -412,6 +539,7 @@ btnImportConfirm.addEventListener('click', async () => {
   btnImportConfirm.disabled = true; btnImportConfirm.textContent = 'Importing…'
   try {
     for (const c of pendingImport) await addCredential(c)
+    await logAuditEvent('vault_import')
     importStatus.className = 'status-msg status-ok'; importStatus.textContent = `✓ Imported ${pendingImport.length} credentials.`
     btnImportConfirm.classList.add('hidden'); pendingImport = []; await loadList()
     setTimeout(() => show('unlocked'), 1200)
@@ -422,28 +550,50 @@ btnImportConfirm.addEventListener('click', async () => {
 function genPw(): string {
   return generatePassword({
     length: Math.max(8, Math.min(64, Number(genLen.value) || 20)),
-    upper: (genUpper as HTMLInputElement).checked,
-    numbers: (genNums as HTMLInputElement).checked,
-    symbols: (genSyms as HTMLInputElement).checked,
+    upper: genUpper.checked,
+    numbers: genNums.checked,
+    symbols: genSyms.checked,
   })
 }
 
-function refreshGen(): void {
-  const pw = genPw(); genOutput.textContent = pw
-  copyStatus.textContent = ''; copyStatus.className = 'status-msg'
-  const r = measureStrength(pw)
-  genStrengthBar.style.background = r.color; genStrengthBar.style.width = `${(r.score / 4) * 100}%`
-  genStrengthLabel.textContent = r.label; (genStrengthLabel as HTMLElement).style.color = r.color
+function setGenMode(mode: 'pw' | 'pp'): void {
+  genMode = mode
+  genTabPw.classList.toggle('active', mode === 'pw')
+  genTabPp.classList.toggle('active', mode === 'pp')
+  genPwOpts.classList.toggle('hidden', mode !== 'pw')
+  genPpOpts.classList.toggle('hidden', mode !== 'pp')
+  genStrengthWrap.classList.toggle('hidden', mode !== 'pw')
+  genEntropyLabel.classList.toggle('hidden', mode !== 'pp')
+  refreshGen()
 }
 
+function refreshGen(): void {
+  copyStatus.textContent = ''; copyStatus.className = 'status-msg'
+  if (genMode === 'pw') {
+    const pw = genPw(); genOutput.textContent = pw
+    const r = measureStrength(pw)
+    genStrengthBar.style.background = r.color; genStrengthBar.style.width = `${(r.score / 4) * 100}%`
+    genStrengthLabel.textContent = r.label; (genStrengthLabel as HTMLElement).style.color = r.color
+  } else {
+    const words = Math.max(3, Math.min(8, Number(ppWords.value) || 4))
+    const pp = generatePassphrase({ wordCount: words, separator: ppSep.value, capitalize: ppCap.checked, appendNumber: ppNum.checked })
+    genOutput.textContent = pp
+    genEntropyLabel.textContent = `~${passphraseEntropy(words)} bits of entropy · ${WORDLIST.length.toLocaleString()} word list`
+  }
+}
+
+genTabPw.addEventListener('click', () => setGenMode('pw'))
+genTabPp.addEventListener('click', () => setGenMode('pp'))
 btnGen.addEventListener('click', () => { prevView = 'unlocked'; refreshGen(); show('gen') })
 btnGenBack.addEventListener('click', () => show(prevView))
 btnRegen.addEventListener('click', refreshGen)
 btnCopy.addEventListener('click', async () => {
-  await navigator.clipboard.writeText(genOutput.textContent ?? '')
+  await copyToClipboard(genOutput.textContent ?? '')
   copyStatus.textContent = 'Copied!'; copyStatus.className = 'status-msg status-ok'
   setTimeout(() => { copyStatus.textContent = ''; copyStatus.className = 'status-msg' }, 2000)
 })
 ;[genLen, genUpper, genNums, genSyms].forEach(el => el.addEventListener('change', refreshGen))
+;[ppWords, ppCap, ppNum].forEach(el => el.addEventListener('change', refreshGen))
+ppSep.addEventListener('change', refreshGen)
 
 init()
